@@ -90,7 +90,7 @@ class KilosortSorter(BaseSorter):
 
         # save binary file
         input_file_path = output_folder / 'recording'
-        write_binary_dat_format_autoscale(recording, input_file_path, dtype='int16')
+        write_binary_int16_scale_if_needed(recording, input_file_path)
 
         # set up kilosort config files and run kilosort on data
         with (source_dir / 'kilosort_master.m').open('r') as f:
@@ -178,57 +178,23 @@ class KilosortSorter(BaseSorter):
         return sorting
 
 
-def write_binary_dat_format_autoscale(recording, save_path, time_axis=0, dtype=None, chunksize=None):
-    '''Saves the traces of a recording extractor in binary .dat format.
-
-    Parameters
-    ----------
-    recording: RecordingExtractor
-        The recording extractor object to be saved in .dat format
-    save_path: str
-        The path to the file.
-    time_axis: 0 (default) or 1
-        If 0 then traces are transposed to ensure (nb_sample, nb_channel) in the file.
-        If 1, the traces shape (nb_channel, nb_sample) is kept in the file.
-    dtype: dtype
-        Type of the saved data. Default float32
-    chunksize: None or int
-        If not None then the copy done by chunk size.
-        Thi avoid to much memory consumption for big files.
-    Returns
-    -------
-    '''
-    save_path = Path(save_path)
+def write_binary_int16_scale_if_needed(recording: se.RecordingExtractor, save_path: Path, time_axis: int=0):
     if save_path.suffix == '':
         # when suffix is already raw/bin/dat do not change it.
         save_path = save_path.parent / (save_path.name + '.dat')
 
-    if chunksize is None:
-        traces = recording.get_traces()
-        scale_factor = 2**14 / np.max(np.abs(traces))
+    traces = recording.get_traces()
+    min_val = np.min(traces)
+    max_val = np.max(traces)
+    if (min_val < -2**15) or (max_val >= 2**15):
+        max_abs = np.max(np.abs([min_val, max_val]))
+        # scale with a margin
+        scale_factor = 2**14 / max_abs
         traces = traces * scale_factor
+    traces = traces.astype('int16')
+    if time_axis == 0:
+        traces = traces.T
+    with save_path.open('wb') as f:
+        traces.tofile(f)
 
-        if dtype is not None:
-            traces = traces.astype(dtype)
-        if time_axis == 0:
-            traces = traces.T
-        with save_path.open('wb') as f:
-            traces.tofile(f)
-    else:
-        raise Exception('Cannot auto scale with chunks')
-        assert time_axis ==0, 'chunked writting work only with time_axis 0'
-        n_sample = recording.get_num_frames()
-        n_chan = recording.get_num_channels()
-        n_chunk = n_sample // chunksize
-        if n_sample % chunksize > 0:
-            n_chunk += 1
-        with save_path.open('wb') as f:
-            for i in range(n_chunk):
-                traces = recording.get_traces(start_frame=i*chunksize,
-                                              end_frame=min((i+1)*chunksize, n_sample))
-                if dtype is not None:
-                    traces = traces.astype(dtype)
-                if time_axis == 0:
-                    traces = traces.T
-                f.write(traces.tobytes())
     return save_path
