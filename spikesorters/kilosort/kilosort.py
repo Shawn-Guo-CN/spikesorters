@@ -186,7 +186,8 @@ def write_binary_int16_scale_if_needed(recording: se.RecordingExtractor, save_pa
     traces = recording.get_traces()
     min_val = np.min(traces)
     max_val = np.max(traces)
-    if (min_val < -2**15) or (max_val >= 2**15):
+    if (min_val < -2**15) or (max_val >= 2**15) or (not _isinteger(traces)):
+        print('Rescaling data before converting to int16.')
         max_abs = np.max(np.abs([min_val, max_val]))
         # scale with a margin
         scale_factor = 2**14 / max_abs
@@ -198,3 +199,6 @@ def write_binary_int16_scale_if_needed(recording: se.RecordingExtractor, save_pa
         traces.tofile(f)
 
     return save_path
+
+def _isinteger(x): 
+   return np.all(np.equal(np.mod(x, 1), 0))
