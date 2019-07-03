@@ -105,9 +105,10 @@ class KlustaSorter(BaseSorter):
             # save binary file (chunk by hcunk) into a new file
             raw_filename = output_folder / 'recording.dat'
             n_chan = recording.get_num_channels()
-            chunksize = 2 ** 24 // n_chan
-            dtype = 'int16'
-            se.write_binary_dat_format(recording, raw_filename, time_axis=0, dtype=dtype, chunksize=chunksize)
+            # chunksize = 2 ** 24 // n_chan
+            # dtype = 'int16'
+            # se.write_binary_dat_format(recording, raw_filename, time_axis=0, dtype=dtype, chunksize=chunksize)
+            write_binary_int16_scale_if_needed(recording, raw_filename)
 
         if p['detect_sign'] < 0:
             detect_sign = 'negative'
@@ -150,3 +151,30 @@ class KlustaSorter(BaseSorter):
     def get_result_from_folder(output_folder):
         sorting = se.KlustaSortingExtractor(Path(output_folder) / 'recording.kwik')
         return sorting
+
+
+def write_binary_int16_scale_if_needed(recording: se.RecordingExtractor, save_path: Path, time_axis: int=0):
+    if save_path.suffix == '':
+        # when suffix is already raw/bin/dat do not change it.
+        save_path = save_path.parent / (save_path.name + '.dat')
+
+    traces = recording.get_traces()
+    min_val = np.min(traces)
+    max_val = np.max(traces)
+    if (min_val < -2**15) or (max_val >= 2**15) or (not _isinteger(traces)):
+        print('Rescaling data before converting to int16.')
+        max_abs = np.max(np.abs([min_val, max_val]))
+        # scale with a margin
+        scale_factor = 2**14 / max_abs
+        traces = traces * scale_factor
+    traces = traces.astype('int16')
+    if time_axis == 0:
+        traces = traces.T
+    with save_path.open('wb') as f:
+        traces.tofile(f)
+
+    return save_path
+
+
+def _isinteger(x):
+    return np.all(np.equal(np.mod(x, 1), 0))

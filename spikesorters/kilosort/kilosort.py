@@ -199,3 +199,7 @@ def write_binary_int16_scale_if_needed(recording: se.RecordingExtractor, save_pa
         traces.tofile(f)
 
     return save_path
+
+
+def _isinteger(x):
+    return np.all(np.equal(np.mod(x, 1), 0))
